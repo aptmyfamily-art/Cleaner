@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const child_process_1 = require("child_process");
+const fs_1 = require("fs");
 // CommonJS-style __dirname (works with module: CommonJS)
 let mainWindow;
 let pythonProcess = null;
@@ -143,5 +144,45 @@ electron_1.ipcMain.handle('dialog:open', async (_, args) => {
     const { dialog } = await Promise.resolve().then(() => __importStar(require('electron')));
     const result = await dialog.showOpenDialog(mainWindow, args);
     return result;
+});
+electron_1.ipcMain.handle('dialog:saveTextsByEpisode', async (_, payload) => {
+    const { dialog } = await Promise.resolve().then(() => __importStar(require('electron')));
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory', 'createDirectory']
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+    }
+    const targetDir = result.filePaths[0];
+    const files = payload?.files || [];
+    for (const file of files) {
+        const name = String(file.name || 'episode').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+        const content = String(file.content || '');
+        const outputPath = path_1.default.join(targetDir, `${name}.txt`);
+        await fs_1.promises.writeFile(outputPath, content, 'utf8');
+    }
+    return { ok: true, targetDir, count: files.length };
+});
+electron_1.ipcMain.handle('dialog:loadTextsByEpisode', async () => {
+    const { dialog } = await Promise.resolve().then(() => __importStar(require('electron')));
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+    }
+    const sourceDir = result.filePaths[0];
+    const entries = await fs_1.promises.readdir(sourceDir, { withFileTypes: true });
+    const texts = {};
+    for (const entry of entries) {
+        if (!entry.isFile())
+            continue;
+        if (!entry.name.toLowerCase().endsWith('.txt'))
+            continue;
+        const episodeName = entry.name.replace(/\.txt$/i, '');
+        const filePath = path_1.default.join(sourceDir, entry.name);
+        texts[episodeName] = await fs_1.promises.readFile(filePath, 'utf8');
+    }
+    return { ok: true, sourceDir, texts };
 });
 //# sourceMappingURL=main.js.map

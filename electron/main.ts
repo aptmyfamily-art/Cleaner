@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
 
 // CommonJS-style __dirname (works with module: CommonJS)
 
@@ -120,4 +121,52 @@ ipcMain.handle('dialog:open', async (_, args) => {
     const { dialog } = await import('electron');
     const result = await dialog.showOpenDialog(mainWindow!, args);
     return result;
+});
+
+ipcMain.handle('dialog:saveTextsByEpisode', async (_, payload) => {
+    const { dialog } = await import('electron');
+    const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openDirectory', 'createDirectory']
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+    }
+
+    const targetDir = result.filePaths[0];
+    const files = payload?.files || [];
+
+    for (const file of files) {
+        const name = String(file.name || 'episode').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+        const content = String(file.content || '');
+        const outputPath = path.join(targetDir, `${name}.txt`);
+        await fs.writeFile(outputPath, content, 'utf8');
+    }
+
+    return { ok: true, targetDir, count: files.length };
+});
+
+ipcMain.handle('dialog:loadTextsByEpisode', async () => {
+    const { dialog } = await import('electron');
+    const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openDirectory']
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+    }
+
+    const sourceDir = result.filePaths[0];
+    const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+    const texts: Record<string, string> = {};
+
+    for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (!entry.name.toLowerCase().endsWith('.txt')) continue;
+        const episodeName = entry.name.replace(/\.txt$/i, '');
+        const filePath = path.join(sourceDir, entry.name);
+        texts[episodeName] = await fs.readFile(filePath, 'utf8');
+    }
+
+    return { ok: true, sourceDir, texts };
 });

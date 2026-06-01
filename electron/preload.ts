@@ -7,5 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('python-response', handler);
         return () => ipcRenderer.removeListener('python-response', handler);
     },
-    openFileDialog: (options: any) => ipcRenderer.invoke('dialog:open', options)
+    openFileDialog: (options: any) => ipcRenderer.invoke('dialog:open', options),
+    saveTextsByEpisode: (files: Array<{ name: string; content: string }>) =>
+        ipcRenderer.invoke('dialog:saveTextsByEpisode', { files }),
+    loadTextsByEpisode: () => ipcRenderer.invoke('dialog:loadTextsByEpisode')
 });

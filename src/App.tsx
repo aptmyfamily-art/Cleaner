@@ -22,6 +22,15 @@ function App() {
     return [...boxes].sort((a, b) => a[1] - b[1]); // Sort by y1 (top to bottom)
   };
 
+  const getEpisodeNameFromPath = (imagePath: string) => {
+    const normalized = imagePath.replace(/\\/g, '/');
+    const parts = normalized.split('/');
+    if (parts.length >= 2) {
+      return parts[parts.length - 2] || "episode";
+    }
+    return "episode";
+  };
+
   // Capture incoming results (boxes/text) and map to project state using imagePath
   useEffect(() => {
     const cleanup = window.electronAPI.onPythonResponse((response: any) => {
@@ -160,6 +169,15 @@ function App() {
     }
   };
 
+  const handleDeleteSelectedBox = (index: number) => {
+    if (!selectedImage) return;
+    const currentBoxes = projectBoxes[selectedImage] || [];
+    if (index < 0 || index >= currentBoxes.length) return;
+    const updated = currentBoxes.filter((_, i) => i !== index);
+    setProjectBoxes(prev => ({ ...prev, [selectedImage]: updated }));
+    setBoxes(updated);
+  };
+
   const handleExportProjectPSD = () => {
     console.log("Exporting PSD Project...");
     console.log("Current Images:", imageList.length);
@@ -216,6 +234,7 @@ function App() {
   const getCombinedOriginalText = () => {
     let result = "";
     imageList.forEach((path) => {
+      const episode = getEpisodeNameFromPath(path);
       const bxs = projectBoxes[path] || [];
       const ocr = projectOcr[path] || [];
       const startIndex = calculateStartIndex(path);
@@ -223,7 +242,7 @@ function App() {
       bxs.forEach((box, i) => {
         const globalId = startIndex + i + 1;
         const [x1, y1, x2, y2] = box.map(Math.round);
-        result += `#${globalId} ${x1} ${y1} ${x2} ${y2}\n`;
+        result += `#${globalId} ${x1} ${y1} ${x2} ${y2} episode ${episode}\n`;
         result += `${ocr[i] || ""}\n\n`;
       });
     });
@@ -233,17 +252,84 @@ function App() {
   const getCombinedTranslationText = () => {
     let result = "";
     imageList.forEach((path) => {
+      const episode = getEpisodeNameFromPath(path);
       const bxs = projectBoxes[path] || [];
       const translations = projectTranslations[path] || [];
       const startIndex = calculateStartIndex(path);
 
       bxs.forEach((_, i) => {
         const globalId = startIndex + i + 1;
-        result += `#${globalId}\n`;
+        result += `#${globalId} episode ${episode}\n`;
         result += `${translations[i] || ""}\n\n`;
       });
     });
     return result;
+  };
+
+  const handleSaveAllTexts = async () => {
+    const byEpisode: Record<string, string[]> = {};
+
+    imageList.forEach((path) => {
+      const episode = getEpisodeNameFromPath(path);
+      const bxs = projectBoxes[path] || [];
+      const ocr = projectOcr[path] || [];
+      const translations = projectTranslations[path] || [];
+      const startIndex = calculateStartIndex(path);
+
+      if (!byEpisode[episode]) byEpisode[episode] = [];
+
+      bxs.forEach((box, i) => {
+        const globalId = startIndex + i + 1;
+        const [x1, y1, x2, y2] = box.map(Math.round);
+        byEpisode[episode].push(`#${globalId} ${x1} ${y1} ${x2} ${y2}`);
+        byEpisode[episode].push(`OCR: ${ocr[i] || ""}`);
+        byEpisode[episode].push(`TRANS: ${translations[i] || ""}`);
+        byEpisode[episode].push("");
+      });
+    });
+
+    const files = Object.entries(byEpisode).map(([name, lines]) => ({
+      name,
+      content: lines.join('\n')
+    }));
+
+    if (files.length === 0) {
+      alert("No episode text to save.");
+      return;
+    }
+
+    const res = await window.electronAPI.saveTextsByEpisode(files);
+    if (res?.ok) {
+      alert(`Saved ${res.count} episode files to ${res.targetDir}`);
+    }
+  };
+
+  const handleLoadTranslations = async () => {
+    const res = await window.electronAPI.loadTextsByEpisode();
+    if (!res?.ok || !res?.texts) return;
+
+    const textMap: Record<string, string> = res.texts;
+    const nextTranslations = { ...projectTranslations };
+
+    imageList.forEach((path) => {
+      const episode = getEpisodeNameFromPath(path);
+      const fileText = textMap[episode];
+      if (!fileText) return;
+
+      const lines = fileText.split('\n');
+      const loaded: string[] = [];
+      for (const line of lines) {
+        if (line.startsWith('TRANS:')) {
+          loaded.push(line.replace(/^TRANS:\s*/, ''));
+        }
+      }
+      if (loaded.length > 0) {
+        nextTranslations[path] = loaded;
+      }
+    });
+
+    setProjectTranslations(nextTranslations);
+    alert("Loaded translations from episode files.");
   };
 
   const handleApplyTranslations = (_originalText: string, translationText: string) => {
@@ -413,6 +499,8 @@ function App() {
           translationText={getCombinedTranslationText()}
           onUpdate={(orig, trans) => handleApplyTranslations(orig, trans)}
           onExportPSD={handleExportProjectPSD}
+          onSaveAll={handleSaveAllTexts}
+          onLoadTranslations={handleLoadTranslations}
         />
       }
     >
@@ -425,6 +513,7 @@ function App() {
             boxes={projectBoxes[selectedImage] || []}
             startIndex={calculateStartIndex(selectedImage)}
             onBoxSelect={(idx) => ocrBox(selectedImage, projectBoxes[selectedImage][idx])}
+            onBoxDelete={handleDeleteSelectedBox}
           />
         ) : (
           <div className="relative z-10 text-center">

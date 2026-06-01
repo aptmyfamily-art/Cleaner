@@ -5,9 +5,10 @@ interface CanvasEditorProps {
     boxes: number[][]; // [x1, y1, x2, y2]
     startIndex?: number;
     onBoxSelect?: (index: number) => void;
+    onBoxDelete?: (index: number) => void;
 }
 
-export function CanvasEditor({ imagePath, boxes, startIndex = 0, onBoxSelect }: CanvasEditorProps) {
+export function CanvasEditor({ imagePath, boxes, startIndex = 0, onBoxSelect, onBoxDelete }: CanvasEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
 
@@ -115,6 +116,11 @@ export function CanvasEditor({ imagePath, boxes, startIndex = 0, onBoxSelect }: 
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onBoxSelect?.(i);
+                                        }}
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            onBoxDelete?.(i);
                                         }}
                                     />
                                     <text

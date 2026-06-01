@@ -8,6 +8,8 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         electron_1.ipcRenderer.on('python-response', handler);
         return () => electron_1.ipcRenderer.removeListener('python-response', handler);
     },
-    openFileDialog: (options) => electron_1.ipcRenderer.invoke('dialog:open', options)
+    openFileDialog: (options) => electron_1.ipcRenderer.invoke('dialog:open', options),
+    saveTextsByEpisode: (files) => electron_1.ipcRenderer.invoke('dialog:saveTextsByEpisode', { files }),
+    loadTextsByEpisode: () => electron_1.ipcRenderer.invoke('dialog:loadTextsByEpisode')
 });
 //# sourceMappingURL=preload.js.map
